@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html> 
+	<head>
+		<meta charset="utf-8">
+		<meta author="studyplayer@qq.com">
+		<title>代码统计工具</title>
+	</head>
+	<body>
+		<div style="display: flex;flex-direction: column;height: 100%;"> 
+			<div style="margin: auto;width:500px;padding: 20px;">
+				<div>支持自定义后缀查询，建议直接导入src文件夹统计</div>
+				<div style="margin-top: 20px;display: flex;">
+					<label for="types">规定扫描文件后缀： </label>
+					<input id="types" style="padding-left: 10px;flex: 1;" type="text" onchange="typeChange(event)" />
+				</div>
+				<div style="margin-top: 20px;justify-content: space-between;display: flex;">
+					<label for="fileDir">选择文件夹
+						<input onchange="filesChange(event)" id="fileDir" type="file" webkitdirectory directory />
+					</label>
+					<button onclick="reset('fileDir')">重置</button>
+				</div>
+				<div style="margin: 20px 0px;justify-content: space-between;display: flex;">
+					<label for="files">选择多文件
+						<input onchange="filesChange(event)" id="files" type="file" multiple />
+					</label>
+					<button onclick="reset('files')">重置</button>
+				</div>
+				<div style="display: flex;justify-content: space-between;">
+					<button onclick="exportExcel()">导出</button>
+					<div style="display: flex;">
+						<span>筛选：</span>
+						<span id="filterType"></span>
+					</div>
+					<button onclick=" filterSet('')">重置筛选</button>
+					<label for="ifClsImport">“java import”行清除
+						<input type="checkbox" name="importCheck" id="importCheck" checked="checked" />
+					</label>
+					<label for="ifClsBlank">空行清除
+						<input type="checkbox" name="ifClsBlank" id="ifClsBlank" checked="checked" />
+					</label>
+				</div> 
+			</div>
+			<div style="width: 800px;overflow: scroll;margin: auto;max-height: 1000px;">
+				<table id="result" style="width: 100%;"> </table>
+			</div>
+			<div style="width: 800px;overflow: scroll;margin: auto;max-height: 1000px;margin-top: 30px;">
+				<table id="unType" style="width: 100%;"> </table>
+			</div>
+		</div>
+	</body>
+</html>
+<script type="text/javascript">
+	let typeList = ["java", "xml", "html", "js", "css", "txt", "vue"]
+	document.getElementById("types").value = typeList.join()
+	//类型规定变化
+	function typeChange(evt) {
+		// console.log(evt.target.value)
+		if (evt.target.value) {
+			typeList = evt.target.value.split(",")
+		}
+	}
+
+	function exportExcel(evt) { 
+		if (showList.length > 0) {
+			pimport = /\bimport\b/
+			let strContent = ""
+			let importCheck = document.getElementById('importCheck')
+			let ifClsBlank = document.getElementById('ifClsBlank')
+			// console.log(importCheck.checked)
+			let copyList = showList.slice()
+			copyList.forEach(val => {
+				let tempName = val.path.split(".")
+				strContent += val.path + ":\n" //名称
+				tempName = tempName[tempName.length - 1] //后缀
+				if (importCheck.checked && tempName == 'java') {
+					val.src = val.src.filter(res => {
+						return !pimport.test(res)
+					})
+				}
+				if (ifClsBlank.checked) {
+					val.src = val.src.filter(res => {
+						// console.log(res+"--"+ res.trim().length)
+						return res.trim().length > 0 && res != '\t'
+					})
+				}
+				strContent += val.src.join("\n")
+			})
+			// console.log(strContent)
+			download(strContent)
+		}
+	}
+	//按照id清空input
+	function reset(name) {
+		let doc = document.getElementById(name)
+		doc.value = ""
+	}
+	let dir;
+	let files;
+	let results = []
+	let showList = []
+	//选择文件后
+	function filesChange(evt) { 
+		count = 0
+		checkedList = []
+		results = []
+		unTypefiles = []
+		//检查格式
+		for (let i = 0; i < evt.target.files.length; i++) {
+			let file = evt.target.files[i];
+			if (!checkIsText(file)) {
+				continue
+			}
+			checkedList.push(file)
+		}
+		//格式检查完成
+		maxFiles = checkedList.length
+
+		checkedList.forEach(val => {
+			getFileLines(val)
+		})
+	}
+	let count = 0
+	let maxFiles = 0;
+	//获得一个文件的行数等信息
+	function getFileLines(file) {
+		// console.log(file)
+		let file_reader = new FileReader();
+		// console.log(count)
+		file_reader.onload = () => {
+			let fc = file_reader.result;
+			// console.log("onload")
+			fc = fc.split("\n")
+			count += 1
+			if (fc) {
+				results.push({
+					path: file.webkitRelativePath != "" ? file.webkitRelativePath : file.name,
+					lines: fc.length,
+					src: fc
+				})
+			}
+			// console.log()
+			if (count >= maxFiles) {
+				showList = results
+				showResult()
+			}
+		};
+		file_reader.readAsText(file, 'UTF-8');
+	}
+	let filterTypeShow = "";
+
+	function filterSet(type) {
+		console.log("筛选文件类型" + type)
+		let dom = document.getElementById("filterType");
+
+		if (type == "") {
+			dom.innerHTML = ""
+			showList = results
+		} else {
+			dom.innerHTML = type
+			showList = results.filter(res => {
+				let tempName = res.path.split(".")
+				tempName = tempName[tempName.length - 1] //后缀 
+				return tempName == type
+			})
+		}
+		showResult()
+
+	}
+	//展示结果
+	function showResult() {
+		let result = document.getElementById("result")
+		let textDom = ""
+		let countAll = 0
+		let typeCountList = typeList.map(val => {
+			let typeCountLine = 0; //行数统计
+			let typeCountFile = 0; //文件个数
+			showList.forEach(res => {
+				let tempName = res.path.split(".")
+				tempName = tempName[tempName.length - 1] //后缀
+				if (tempName == val) {
+					typeCountLine += res.lines
+					typeCountFile += 1
+				}
+			})
+			return {
+				type: val,
+				count: typeCountLine,
+				fileCount: typeCountFile
+			}
+		})
+		typeCountList.forEach(val => {
+			if (val.count != 0) {
+				textDom +=
+					`
+					<tr onclick="filterSet('${val.type}')" class="pointer">
+						<td>\\</td>
+						<td>${val.type}统计文件${val.fileCount}个，共计行数：</td>
+						<td>${val.count}</td>
+					</tr> 
+					`
+			}
+
+		})
+		showList.forEach((val, index) => {
+			countAll += val.lines
+			textDom += `
+			<tr>
+				<td>${index+1}</td>
+				<td>${val.path}</td>
+				<td>${val.lines}</td>
+			</tr> 
+			`
+		})
+		textDom =
+			`
+		<tr>
+			<th>序号</th>
+			<th>文件</th>
+			<th>行数</th>
+		</tr> 
+		<tr>
+			<td>\\</td>
+			<td>统计文件${showList.length}个，共计行数：</td>
+			<td>${countAll}</td>
+		</tr> 
+		` +
+			textDom
+		result.innerHTML = textDom
+		// result.select()
+		//无效文件统计
+		let unType = document.getElementById("unType");
+		let unTypeDom =
+			`
+			<tr>
+				<th>序号</th>
+				<th>文件</th>
+				<th>类型</th>
+			</tr> 
+		<tr>
+			<td>\\</td>
+			<td>无效文件共${unTypefiles.length}个</td>
+			<td>\\</td>
+		</tr> 
+		`
+		unTypefiles.forEach((val, ind) => {
+			let name = val.webkitRelativePath != "" ? val.webkitRelativePath : val.name
+			unTypeDom += `
+				<tr>
+					<td>${ind+1}</td>
+					<td>${name}</td>
+					<td>${val.type}<td>
+				</tr> 
+			`
+		})
+		unType.innerHTML = unTypeDom
+	}
+	let unTypefiles = []
+	//检查类型是否符合规定
+	function checkIsText(file) {
+		let list = file.name.split(".")
+		let tail = list[list.length - 1]
+		// console.log(list)
+		if (typeList.indexOf(tail) == -1) {
+			// console.log(file.name+"此类型文件不在统计规则")
+			unTypefiles.push(file)
+			return false
+		}
+		return true
+	}
+
+	function download(content) {
+		// 创建隐藏的可下载链接
+		var eleLink = document.createElement('a');
+		eleLink.download = '代码合并.txt.txt';
+		eleLink.style.display = 'none';
+		// 字符内容转变成blob地址
+		var blob = new Blob([content]);
+		eleLink.href = URL.createObjectURL(blob);
+		// 触发点击
+		document.body.appendChild(eleLink);
+		eleLink.click();
+		// 然后移除
+		document.body.removeChild(eleLink);
+	};
+</script>
+<style type="text/css">
+		tr:nth-child(odd) {
+			background: #ebebeb;
+		}
+
+		tr:nth-child(even) {
+			background: #cccccc;
+		}
+
+		tr:hover {
+			background: #000;
+			color: #fff;
+			cursor: default;
+		}
+
+		.pointer:hover {
+			cursor: pointer;
+		}
+</style>
